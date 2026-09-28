@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { updateAlley } from "../actions";
+import { endDay, openDay, updateAlley } from "../actions";
 import { AlleyForm } from "../alley-form";
 
 export default async function AlleyPage({
@@ -43,7 +43,13 @@ export default async function AlleyPage({
     .select("days_profit, profit, tabling_fee")
     .eq("alley_id", alley.id)
     .maybeSingle();
+  const { data: days } = await supabase
+    .from("days")
+    .select("id, label, status")
+    .eq("alley_id", alley.id)
+    .order("id");
 
+  const hasOpenDay = days?.some((day) => day.status === "open");
   const isAdmin = profile?.role === "admin";
 
   return (
@@ -57,7 +63,42 @@ export default async function AlleyPage({
         {profit?.tabling_fee ?? alley.tabling_fee} · alley profit $
         {profit?.profit ?? "0.00"}
       </p>
-      <p className="text-sm text-neutral-500">No days yet.</p>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Days</h2>
+        {days && days.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {days.map((day) => (
+              <li key={day.id} className="flex items-center gap-3">
+                <span>
+                  {day.label} — {day.status}
+                </span>
+                {day.status === "open" ? (
+                  <form action={endDay}>
+                    <input type="hidden" name="alley_id" value={alley.id} />
+                    <input type="hidden" name="day_id" value={day.id} />
+                    <button type="submit" className="text-sm underline">
+                      End day
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-neutral-500">No days yet.</p>
+        )}
+        {hasOpenDay ? null : (
+          <form action={openDay}>
+            <input type="hidden" name="alley_id" value={alley.id} />
+            <button
+              type="submit"
+              className="rounded bg-neutral-900 px-4 py-2 text-white"
+            >
+              Open day {(days?.length ?? 0) + 1}
+            </button>
+          </form>
+        )}
+      </section>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {isAdmin ? (
         <AlleyForm

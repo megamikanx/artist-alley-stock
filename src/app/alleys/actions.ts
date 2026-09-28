@@ -143,3 +143,48 @@ export async function updateAlley(formData: FormData) {
 
   redirect(back);
 }
+
+export async function openDay(formData: FormData) {
+  const alleyId = Number(formData.get("alley_id"));
+  const back = `/alleys/${alleyId}`;
+  if (!Number.isInteger(alleyId)) redirect("/alleys");
+
+  const supabase = await createClient();
+  const { count, error: countError } = await supabase
+    .from("days")
+    .select("id", { count: "exact", head: true })
+    .eq("alley_id", alleyId);
+
+  if (countError) {
+    redirect(`${back}?error=${encodeURIComponent(countError.message)}`);
+  }
+
+  const { error } = await supabase.from("days").insert({
+    alley_id: alleyId,
+    label: `Day ${(count ?? 0) + 1}`,
+  });
+
+  if (error) {
+    const message =
+      error.code === "23505"
+        ? "End the open day before opening another."
+        : error.message;
+    redirect(`${back}?error=${encodeURIComponent(message)}`);
+  }
+
+  redirect(back);
+}
+
+export async function endDay(formData: FormData) {
+  const alleyId = Number(formData.get("alley_id"));
+  const dayId = Number(formData.get("day_id"));
+  const back = `/alleys/${alleyId}`;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("end_day", { p_day_id: dayId });
+
+  if (error) {
+    redirect(`${back}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect(back);
+}
