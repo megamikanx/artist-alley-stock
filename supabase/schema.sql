@@ -23,6 +23,10 @@ create table items (
   )
 );
 
+-- One unique item per name and size combination. 
+create unique index items_one_sku
+on items (lower(btrim(name)), category, coalesce(size, ''));
+
 create table alleys (
   id bigint generated always as identity primary key,
   name text not null,
