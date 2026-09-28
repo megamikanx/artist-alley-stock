@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "./login/actions";
+import Link from "next/link";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -13,7 +14,7 @@ export default async function HomePage() {
     .maybeSingle();
   const { data: items, error } = await supabase
     .from("items")
-    .select("id, name, category, size, quantity")
+    .select("id, name, category, size, quantity, production_price, retail_price")
     .order("name");
 
   return (
@@ -37,12 +38,19 @@ export default async function HomePage() {
         <p className="text-red-600">{profileError.message}</p>
       ) : null}
       {error ? <p className="text-red-600">{error.message}</p> : null}
+      <Link href="/items/new" className="text-sm underline">
+        Add item
+      </Link>
       {items && items.length > 0 ? (
         <ul className="flex flex-col gap-2">
           {items.map((item) => (
             <li key={item.id}>
-              {item.name}
-              {item.size ? ` (${item.size})` : ""} — {item.quantity} left
+              <Link href={`/items/${item.id}`} className="underline">
+                {item.name}
+              </Link>{" "}
+              ({item.category}
+              {item.size ? ` ${item.size}` : ""}) — {item.quantity} left · made $
+              {item.production_price} · sells ${item.retail_price}
             </li>
           ))}
         </ul>
