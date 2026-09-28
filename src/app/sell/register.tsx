@@ -11,15 +11,18 @@ type Size = "A3" | "A4" | "A5";
 type StockItem = {
   id: number;
   name: string;
+  artist: string;
   category: Category;
   size: Size | null;
   quantity: number;
   retailPrice: string;
+  imageUrl: string | null;
 };
 
 type Sale = {
   id: number;
   name: string;
+  artist: string;
   quantity: number;
   retail: string;
   profit: string;
@@ -39,20 +42,25 @@ export function Register({
   items,
   sales,
   profit,
+  profitLabel,
 }: {
   dayId: number;
   isOpen: boolean;
   items: StockItem[];
   sales: Sale[];
   profit: string;
+  profitLabel: string;
 }) {
   const router = useRouter();
   const [category, setCategory] = useState<Category>("print");
   const [size, setSize] = useState<Size>("A3");
+  const [artist, setArtist] = useState("all");
+  const artists = [...new Set(items.map((item) => item.artist).filter(Boolean))].sort();
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const visible = items.filter((item) => {
+    if (artist !== "all" && item.artist !== artist) return false;
     if (item.category !== category) return false;
     if (category === "print") return item.size === size;
     return true;
@@ -90,6 +98,23 @@ export function Register({
             </button>
           ))}
         </div>
+        {artists.length > 1 ? (
+          <label className="flex flex-col gap-1 text-sm">
+            Artist
+            <select
+              value={artist}
+              onChange={(event) => setArtist(event.target.value)}
+              className="w-fit rounded border border-neutral-300 px-3 py-2"
+            >
+              <option value="all">All artists</option>
+              {artists.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {category === "print" ? (
           <div className="flex gap-2">
             {sizes.map((option) => (
@@ -119,7 +144,22 @@ export function Register({
               >
                 <input type="hidden" name="day_id" value={dayId} />
                 <input type="hidden" name="item_id" value={item.id} />
+                {item.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    className="h-28 w-full rounded object-cover"
+                  />
+                ) : (
+                  <div className="flex h-28 items-center justify-center rounded bg-neutral-100 text-xs text-neutral-400">
+                    No photo
+                  </div>
+                )}
                 <p className="font-medium">{item.name}</p>
+                {item.artist ? (
+                  <p className="text-xs text-neutral-500">{item.artist}</p>
+                ) : null}
                 <p className="text-sm text-neutral-600">
                   ${money(item.retailPrice)} · {item.quantity} left
                 </p>
@@ -155,13 +195,16 @@ export function Register({
       </section>
       <aside className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">This day</h2>
-        <p>Your profit ${money(profit)}</p>
+        <p>
+          {profitLabel} ${money(profit)}
+        </p>
         {sales.length > 0 ? (
           <ul className="flex flex-col gap-3">
             {sales.map((sale) => (
               <li key={sale.id} className="text-sm">
                 <p>
-                  {sale.quantity} × {sale.name} · ${money(sale.retail)}
+                  {sale.quantity} × {sale.name}
+                  {sale.artist ? ` · ${sale.artist}` : ""} · ${money(sale.retail)}
                 </p>
                 {isOpen ? (
                   <form action={(formData) => run(() => voidSale(formData))}>

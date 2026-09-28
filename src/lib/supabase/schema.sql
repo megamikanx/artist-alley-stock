@@ -30,6 +30,59 @@ $$;
 revoke execute on function is_admin() from public, anon;
 grant execute on function is_admin() to authenticated;
 
+create or replace function alley_artist_count(p_alley_id bigint)
+returns integer
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select count(*)::integer
+  from alley_artists
+  where alley_id = p_alley_id;
+$$;
+
+create or replace function shares_alley(p_alley_id bigint)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select is_admin()
+    or exists (
+      select 1
+      from alley_artists
+      where alley_id = p_alley_id
+        and artist_id = auth.uid()
+    );
+$$;
+
+create or replace function can_see_profile(p_profile_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p_profile_id = auth.uid()
+    or is_admin()
+    or exists (
+      select 1
+      from alley_artists mine
+      join alley_artists theirs on theirs.alley_id = mine.alley_id
+      where mine.artist_id = auth.uid()
+        and theirs.artist_id = p_profile_id
+    );
+$$;
+
+revoke execute on function alley_artist_count(bigint) from public, anon;
+revoke execute on function shares_alley(bigint) from public, anon;
+revoke execute on function can_see_profile(uuid) from public, anon;
+grant execute on function alley_artist_count(bigint) to authenticated;
+grant execute on function shares_alley(bigint) to authenticated;
+grant execute on function can_see_profile(uuid) to authenticated;
+
 create or replace function handle_new_user()
 returns trigger
 language plpgsql
@@ -140,7 +193,8 @@ from days d
 left join sales s on s.day_id = d.id
 group by d.id;
 
--- Admin profit subtracts the booth fee. An artist's profit does not.
+-- The booth fee is split across the artists on the alley.
+-- Admin profit subtracts the full fee. An artist's profit subtracts fee / n.
 create view alley_profits
 with (security_invoker = true) as
 select
@@ -153,7 +207,10 @@ select
   case
     when is_admin() then coalesce(sum(dp.profit), 0) - a.tabling_fee
     else coalesce(sum(dp.profit), 0)
-  end as profit
+      - coalesce(a.tabling_fee / nullif(alley_artist_count(a.id), 0), 0)
+  end as profit,
+  alley_artist_count(a.id) as artist_count,
+  coalesce(a.tabling_fee / nullif(alley_artist_count(a.id), 0), 0) as fee_share
 from alleys a
 left join day_profits dp on dp.alley_id = a.id
 group by a.id;
@@ -318,7 +375,7 @@ alter table sales enable row level security;
 
 create policy "read own profile"
 on profiles for select to authenticated
-using (id = auth.uid() or is_admin());
+using (id = auth.uid() or is_admin() or can_see_profile(id));
 
 create policy "admin updates profiles"
 on profiles for update to authenticated
@@ -327,7 +384,7 @@ with check (is_admin());
 
 create policy "see memberships"
 on alley_artists for select to authenticated
-using (artist_id = auth.uid() or is_admin());
+using (shares_alley(alley_id));
 
 create policy "admin manages memberships"
 on alley_artists for all to authenticated
@@ -425,3 +482,62 @@ using (
 );
 
 grant select on day_profits, alley_profits, all_time_profit to authenticated;
+
+create table restocks (
+  id bigint generated always as identity primary key,
+  item_id bigint not null references items (id) on delete cascade,
+  artist_id uuid not null references profiles (id),
+  quantity integer not null check (quantity > 0),
+  unit_cost numeric(10, 2) not null check (unit_cost >= 0),
+  restocked_at timestamptz not null default now()
+);
+
+alter table restocks enable row level security;
+
+create policy "see own restocks"
+on restocks for select to authenticated
+using (artist_id = auth.uid() or is_admin());
+
+create or replace function restock_item(
+  p_item_id bigint,
+  p_quantity integer,
+  p_unit_cost numeric
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_artist uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'Sign in first.';
+  end if;
+  if p_quantity is null or p_quantity <= 0 then
+    raise exception 'Add at least one copy.';
+  end if;
+  if p_unit_cost is null or p_unit_cost < 0 then
+    raise exception 'Cost cannot be negative.';
+  end if;
+
+  select artist_id into v_artist from items where id = p_item_id;
+  if v_artist is null then
+    raise exception 'Item not found.';
+  end if;
+  if v_artist <> auth.uid() and not is_admin() then
+    raise exception 'You can only restock your own items.';
+  end if;
+
+  insert into restocks (item_id, artist_id, quantity, unit_cost)
+  values (p_item_id, v_artist, p_quantity, p_unit_cost);
+
+  update items
+  set quantity = quantity + p_quantity,
+      updated_at = now()
+  where id = p_item_id;
+end;
+$$;
+
+revoke all on function restock_item(bigint, integer, numeric) from public;
+grant execute on function restock_item(bigint, integer, numeric) to authenticated;

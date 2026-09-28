@@ -15,6 +15,7 @@ export function ItemForm({
     quantity: number;
     production_price: string | number;
     retail_price: string | number;
+    image_path?: string | null;
   };
 }) {
   return (
@@ -77,6 +78,18 @@ export function ItemForm({
           defaultValue={item?.production_price ?? ""}
           className="rounded border border-neutral-300 px-3 py-2"
         />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        Photo
+        {item?.image_path ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.image_path}
+            alt=""
+            className="h-32 w-32 rounded object-cover"
+          />
+        ) : null}
+        <input name="image" type="file" accept="image/*" />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Retail price
