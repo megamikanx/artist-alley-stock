@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { endDay, openDay, updateAlley } from "../actions";
 import { AlleyForm } from "../alley-form";
+import { money } from "@/lib/money";
 
 export default async function AlleyPage({
   params,
@@ -48,6 +49,14 @@ export default async function AlleyPage({
     .select("id, label, status")
     .eq("alley_id", alley.id)
     .order("id");
+  const { data: dayProfits } = await supabase
+    .from("day_profits")
+    .select("day_id, profit")
+    .eq("alley_id", alley.id);
+
+  const profitByDay = new Map(
+    (dayProfits ?? []).map((row) => [row.day_id, row.profit]),
+  );
 
   const hasOpenDay = days?.some((day) => day.status === "open");
   const isAdmin = profile?.role === "admin";
@@ -59,9 +68,9 @@ export default async function AlleyPage({
       </Link>
       <h1 className="text-4xl font-semibold tracking-tight">{alley.name}</h1>
       <p className="text-neutral-700">
-        Sales profit ${profit?.days_profit ?? "0.00"} · fee $
-        {profit?.tabling_fee ?? alley.tabling_fee} · alley profit $
-        {profit?.profit ?? "0.00"}
+        Sales profit ${money(profit?.days_profit ?? 0)} · fee $
+        {money(profit?.tabling_fee ?? alley.tabling_fee)} · alley profit $
+        {money(profit?.profit ?? 0)}
       </p>
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Days</h2>
@@ -70,8 +79,12 @@ export default async function AlleyPage({
             {days.map((day) => (
               <li key={day.id} className="flex items-center gap-3">
                 <span>
-                  {day.label} — {day.status}
+                  {day.label} — {day.status} · profit $
+                  {money(profitByDay.get(day.id) ?? 0)}
                 </span>
+                <Link href={`/sell/${day.id}`} className="text-sm underline">
+                  {day.status === "open" ? "Sell" : "Summary"}
+                </Link>
                 {day.status === "open" ? (
                   <form action={endDay}>
                     <input type="hidden" name="alley_id" value={alley.id} />

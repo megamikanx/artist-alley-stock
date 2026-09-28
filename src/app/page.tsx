@@ -1,6 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
-import { signOut } from "./login/actions";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { money } from "@/lib/money";
+import { signOut } from "./login/actions";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -16,6 +17,10 @@ export default async function HomePage() {
     .from("items")
     .select("id, name, category, size, quantity, production_price, retail_price")
     .order("name");
+  const { data: total, error: totalError } = await supabase
+    .from("all_time_profit")
+    .select("profit")
+    .maybeSingle();
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16">
@@ -27,6 +32,9 @@ export default async function HomePage() {
               {profile.display_name} · {profile.role}
             </p>
           ) : null}
+          <p className="mt-2 text-lg">
+            All-time profit ${money(total?.profit ?? 0)}
+          </p>
         </div>
         <form action={signOut}>
           <button type="submit" className="text-sm underline">
@@ -37,6 +45,7 @@ export default async function HomePage() {
       {profileError ? (
         <p className="text-red-600">{profileError.message}</p>
       ) : null}
+      {totalError ? <p className="text-red-600">{totalError.message}</p> : null}
       {error ? <p className="text-red-600">{error.message}</p> : null}
       <div className="flex gap-4">
         <Link href="/items/new" className="text-sm underline">
