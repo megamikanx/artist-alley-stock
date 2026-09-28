@@ -38,9 +38,14 @@ export default async function HomePage() {
         <p className="text-red-600">{profileError.message}</p>
       ) : null}
       {error ? <p className="text-red-600">{error.message}</p> : null}
-      <Link href="/items/new" className="text-sm underline">
-        Add item
-      </Link>
+      <div className="flex gap-4">
+        <Link href="/items/new" className="text-sm underline">
+          Add item
+        </Link>
+        <Link href="/alleys" className="text-sm underline">
+          Alleys
+        </Link>
+      </div>
       {items && items.length > 0 ? (
         <ul className="flex flex-col gap-2">
           {items.map((item) => (
