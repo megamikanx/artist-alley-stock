@@ -1,11 +1,19 @@
-export default function Homepage() {
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Artist Alley Stock",
+  description: "Track artist alley stock and profit",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-4 px-6">
-      <p className="text-sm font-medium text-neutral-500">Artist alley</p>
-      <h1 className="text-4xl font-semibold tracking-tight">Stock tracker</h1>
-      <p className="text-lg text-neutral-600">
-        Inventory, convention days, and profit will live here.
-      </p>
-    </main>
+    <html lang="en">
+      <body>{children}</body>
+    </html>
   );
 }
