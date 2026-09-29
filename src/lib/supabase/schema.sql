@@ -165,6 +165,7 @@ on days (alley_id) where status = 'open';
 create table sales (
   id bigint generated always as identity primary key,
   day_id bigint not null references days (id) on delete cascade,
+  alley_id bigint not null references alleys (id),
   item_id bigint not null references items (id),
   artist_id uuid not null references profiles (id),
   quantity integer not null check (quantity > 0),
@@ -275,6 +276,7 @@ begin
 
   insert into sales (
     day_id,
+    alley_id,
     item_id,
     artist_id,
     quantity,
@@ -283,6 +285,7 @@ begin
   )
   values (
     p_day_id,
+    v_day.alley_id,
     p_item_id,
     v_item.artist_id,
     p_quantity,
@@ -362,6 +365,51 @@ revoke execute on function end_day(bigint) from public, anon;
 grant execute on function record_sale(bigint, bigint, integer) to authenticated;
 grant execute on function void_sale(bigint) to authenticated;
 grant execute on function end_day(bigint) to authenticated;
+
+create or replace function day_sales(p_alley_id bigint, p_day_id bigint)
+returns table (
+  id bigint,
+  artist_name text,
+  item_name text,
+  size text,
+  quantity integer,
+  unit_retail_price numeric,
+  unit_production_cost numeric
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    s.id,
+    p.display_name,
+    i.name,
+    i.size,
+    s.quantity,
+    s.unit_retail_price,
+    s.unit_production_cost
+  from sales s
+  join days d on d.id = s.day_id
+  join items i on i.id = s.item_id
+  join profiles p on p.id = s.artist_id
+  where d.alley_id = p_alley_id
+    and d.id = p_day_id
+    and auth.uid() is not null
+    and (
+      is_admin()
+      or exists (
+        select 1
+        from alley_artists aa
+        where aa.alley_id = p_alley_id
+          and aa.artist_id = auth.uid()
+      )
+    )
+  order by s.sold_at desc;
+$$;
+
+revoke all on function day_sales(bigint, bigint) from public;
+grant execute on function day_sales(bigint, bigint) to authenticated;
 
 revoke insert, update, delete on sales from public, anon, authenticated;
 grant select on sales to authenticated;

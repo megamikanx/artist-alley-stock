@@ -5,9 +5,18 @@ import { createClient } from "@/lib/supabase/server";
 import { money } from "@/lib/money";
 import { Register } from "../register";
 
-type EmbeddedItem = { name: string; size: string | null };
-type EmbeddedProfile = { display_name: string };
+export const dynamic = "force-dynamic";
+
 type EmbeddedAlley = { name: string };
+type DaySale = {
+  id: number;
+  artist_name: string;
+  item_name: string;
+  size: string | null;
+  quantity: number;
+  unit_retail_price: string | number;
+  unit_production_cost: string | number;
+};
 
 function first<T>(value: T | T[] | null): T | null {
   if (!value) return null;
@@ -43,41 +52,42 @@ export default async function SellPage({
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  const isAdmin = profile?.role === "admin";
+  const { data: adminFlag } = await supabase.rpc("is_admin");
+  const isAdmin = adminFlag === true || profile?.role === "admin";
   let stockQuery = supabase
     .from("items")
     .select(
-      "id, name, category, size, quantity, retail_price, image_path, profiles(display_name)",
+      "id, name, category, size, quantity, retail_price, image_path, artist_id",
     )
     .order("name");
-  let salesQuery = supabase
-    .from("sales")
-    .select(
-      "id, quantity, unit_retail_price, unit_production_cost, items(name, size), profiles(display_name)",
-    )
-    .eq("day_id", day.id)
-    .order("sold_at", { ascending: false });
-  if (!isAdmin) {
-    stockQuery = stockQuery.eq("artist_id", user.id);
-    salesQuery = salesQuery.eq("artist_id", user.id);
-  }
-  const { data: stock } = await stockQuery;
-  const { data: sales } = await salesQuery;
+  if (!isAdmin) stockQuery = stockQuery.eq("artist_id", user.id);
+  const { data: stock, error: stockError } = await stockQuery;
+  const { data: sales, error: salesError } = await supabase.rpc("day_sales", {
+    p_alley_id: day.alley_id,
+    p_day_id: day.id,
+  });
 
-  const saleRows = (sales ?? []).map((sale) => {
-    const item = first(sale.items as EmbeddedItem | EmbeddedItem[] | null);
-    const artist = first(
-      sale.profiles as EmbeddedProfile | EmbeddedProfile[] | null,
-    );
+  const nameIds = [...new Set((stock ?? []).map((item) => item.artist_id))];
+  const { data: artists } = nameIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", nameIds)
+    : { data: [] };
+  const artistName = new Map(
+    (artists ?? []).map((artist) => [artist.id, artist.display_name]),
+  );
+
+  const saleRows = ((sales ?? []) as DaySale[]).map((sale) => {
     const profit =
       sale.quantity *
       (Number(sale.unit_retail_price) - Number(sale.unit_production_cost));
     return {
       id: sale.id,
-      name: item
-        ? `${item.name}${item.size ? ` (${item.size})` : ""}`
+      name: sale.item_name
+        ? `${sale.item_name}${sale.size ? ` (${sale.size})` : ""}`
         : "Item",
-      artist: artist?.display_name ?? "",
+      artist: sale.artist_name ?? "",
       quantity: sale.quantity,
       retail: String(sale.unit_retail_price),
       profit: profit.toFixed(2),
@@ -117,26 +127,27 @@ export default async function SellPage({
           </form>
         ) : null}
       </div>
+      {salesError ? (
+        <p className="text-sm text-red-600">{salesError.message}</p>
+      ) : null}
+      {stockError ? (
+        <p className="text-sm text-red-600">{stockError.message}</p>
+      ) : null}
       <Register
         dayId={day.id}
         isOpen={isOpen}
         profit={dayProfit.toFixed(2)}
         profitLabel={isAdmin ? "Sales profit" : "Your profit"}
-        items={(stock ?? []).map((item) => {
-          const artist = first(
-            item.profiles as EmbeddedProfile | EmbeddedProfile[] | null,
-          );
-          return {
-            id: item.id,
-            name: item.name,
-            artist: isAdmin ? (artist?.display_name ?? "") : "",
-            category: item.category,
-            size: item.size,
-            quantity: item.quantity,
-            retailPrice: String(item.retail_price),
-            imageUrl: item.image_path,
-          };
-        })}
+        items={(stock ?? []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          artist: isAdmin ? (artistName.get(item.artist_id) ?? "") : "",
+          category: item.category,
+          size: item.size,
+          quantity: item.quantity,
+          retailPrice: String(item.retail_price),
+          imageUrl: item.image_path,
+        }))}
         sales={saleRows}
       />
     </main>
