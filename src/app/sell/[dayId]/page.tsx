@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { unstable_noStore as noStore } from "next/cache";
 import { endDay } from "@/app/alleys/actions";
 import { createClient } from "@/lib/supabase/server";
 import { money } from "@/lib/money";
@@ -8,15 +9,6 @@ import { Register } from "../register";
 export const dynamic = "force-dynamic";
 
 type EmbeddedAlley = { name: string };
-type DaySale = {
-  id: number;
-  artist_name: string;
-  item_name: string;
-  size: string | null;
-  quantity: number;
-  unit_retail_price: string | number;
-  unit_production_cost: string | number;
-};
 
 function first<T>(value: T | T[] | null): T | null {
   if (!value) return null;
@@ -29,6 +21,7 @@ export default async function SellPage({
   params: Promise<{ dayId: string }>;
 }) {
   const { dayId } = await params;
+  noStore();
   const id = Number(dayId);
   if (!Number.isInteger(id)) notFound();
 
@@ -62,12 +55,21 @@ export default async function SellPage({
     .order("name");
   if (!isAdmin) stockQuery = stockQuery.eq("artist_id", user.id);
   const { data: stock, error: stockError } = await stockQuery;
-  const { data: sales, error: salesError } = await supabase.rpc("day_sales", {
-    p_alley_id: day.alley_id,
-    p_day_id: day.id,
-  });
+  const { data: sales, error: salesError } = await supabase
+    .from("sales")
+    .select(
+      "id, item_id, artist_id, quantity, unit_retail_price, unit_production_cost, days!inner(alley_id)",
+    )
+    .eq("day_id", day.id)
+    .eq("days.alley_id", day.alley_id)
+    .order("id", { ascending: false });
 
-  const nameIds = [...new Set((stock ?? []).map((item) => item.artist_id))];
+  const nameIds = [
+    ...new Set([
+      ...(stock ?? []).map((item) => item.artist_id),
+      ...(sales ?? []).map((sale) => sale.artist_id),
+    ]),
+  ];
   const { data: artists } = nameIds.length
     ? await supabase
         .from("profiles")
@@ -77,17 +79,23 @@ export default async function SellPage({
   const artistName = new Map(
     (artists ?? []).map((artist) => [artist.id, artist.display_name]),
   );
+  const itemIds = [...new Set((sales ?? []).map((sale) => sale.item_id))];
+  const { data: soldItems } = itemIds.length
+    ? await supabase.from("items").select("id, name, size").in("id", itemIds)
+    : { data: [] };
+  const itemById = new Map((soldItems ?? []).map((item) => [item.id, item]));
 
-  const saleRows = ((sales ?? []) as DaySale[]).map((sale) => {
+  const saleRows = (sales ?? []).map((sale) => {
+    const item = itemById.get(sale.item_id);
     const profit =
       sale.quantity *
       (Number(sale.unit_retail_price) - Number(sale.unit_production_cost));
     return {
       id: sale.id,
-      name: sale.item_name
-        ? `${sale.item_name}${sale.size ? ` (${sale.size})` : ""}`
+      name: item
+        ? `${item.name}${item.size ? ` (${item.size})` : ""}`
         : "Item",
-      artist: sale.artist_name ?? "",
+      artist: artistName.get(sale.artist_id) ?? "",
       quantity: sale.quantity,
       retail: String(sale.unit_retail_price),
       profit: profit.toFixed(2),
@@ -113,6 +121,9 @@ export default async function SellPage({
             {day.label}
             {isOpen ? "" : " · closed"}
           </h1>
+          <p className="text-sm text-neutral-500">
+            Alley {day.alley_id} · Day {day.id}
+          </p>
         </div>
         {isOpen ? (
           <form action={endDay}>

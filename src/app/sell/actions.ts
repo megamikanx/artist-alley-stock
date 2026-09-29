@@ -26,6 +26,7 @@ export async function recordSale(formData: FormData) {
 
   revalidatePath(`/sell/${dayId}`);
   revalidatePath("/");
+  revalidatePath("/alleys", "layout");
   return { error: null };
 }
 
@@ -44,5 +45,6 @@ export async function voidSale(formData: FormData) {
 
   revalidatePath(`/sell/${dayId}`);
   revalidatePath("/");
+  revalidatePath("/alleys", "layout");
   return { error: null };
 }

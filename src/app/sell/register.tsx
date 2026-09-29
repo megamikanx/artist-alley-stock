@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { money } from "@/lib/money";
 import { recordSale, voidSale } from "./actions";
 
@@ -58,6 +58,23 @@ export function Register({
   const artists = [...new Set(items.map((item) => item.artist).filter(Boolean))].sort();
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    function refresh() {
+      router.refresh();
+    }
+    const timer = window.setInterval(refresh, 5000);
+    function onVisible() {
+      if (document.visibilityState === "visible") refresh();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", refresh);
+    };
+  }, [router]);
 
   const visible = items.filter((item) => {
     if (artist !== "all" && item.artist !== artist) return false;
