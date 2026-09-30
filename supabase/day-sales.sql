@@ -115,11 +115,11 @@ as $$
     s.unit_retail_price,
     s.unit_production_cost
   from sales s
-  join days d on d.id = s.day_id
-  join items i on i.id = s.item_id
-  join profiles p on p.id = s.artist_id
-  where d.alley_id = p_alley_id
-    and d.id = p_day_id
+  left join days d on d.id = s.day_id
+  left join items i on i.id = s.item_id
+  left join profiles p on p.id = s.artist_id
+  where s.day_id = p_day_id
+    and coalesce(s.alley_id, d.alley_id) = p_alley_id
     and auth.uid() is not null
     and (
       is_admin()

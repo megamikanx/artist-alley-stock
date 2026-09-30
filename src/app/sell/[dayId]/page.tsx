@@ -9,6 +9,25 @@ import { Register } from "../register";
 export const dynamic = "force-dynamic";
 
 type EmbeddedAlley = { name: string };
+type DaySale = {
+  id: number;
+  artist_name: string | null;
+  item_name: string | null;
+  size: string | null;
+  quantity: number;
+  unit_retail_price: string | number;
+  unit_production_cost: string | number;
+};
+type TableSale = {
+  id: number;
+  day_id: number;
+  alley_id: number | null;
+  item_id: number;
+  artist_id: string;
+  quantity: number;
+  unit_retail_price: string | number;
+  unit_production_cost: string | number;
+};
 
 function first<T>(value: T | T[] | null): T | null {
   if (!value) return null;
@@ -55,52 +74,81 @@ export default async function SellPage({
     .order("name");
   if (!isAdmin) stockQuery = stockQuery.eq("artist_id", user.id);
   const { data: stock, error: stockError } = await stockQuery;
-  const { data: sales, error: salesError } = await supabase
-    .from("sales")
-    .select(
-      "id, item_id, artist_id, quantity, unit_retail_price, unit_production_cost, days!inner(alley_id)",
-    )
-    .eq("day_id", day.id)
-    .eq("days.alley_id", day.alley_id)
-    .order("id", { ascending: false });
-
-  const nameIds = [
-    ...new Set([
-      ...(stock ?? []).map((item) => item.artist_id),
-      ...(sales ?? []).map((sale) => sale.artist_id),
-    ]),
+  const stockArtistIds = [
+    ...new Set((stock ?? []).map((item) => item.artist_id)),
   ];
-  const { data: artists } = nameIds.length
+  const { data: artists } = stockArtistIds.length
     ? await supabase
         .from("profiles")
         .select("id, display_name")
-        .in("id", nameIds)
+        .in("id", stockArtistIds)
     : { data: [] };
   const artistName = new Map(
     (artists ?? []).map((artist) => [artist.id, artist.display_name]),
   );
-  const itemIds = [...new Set((sales ?? []).map((sale) => sale.item_id))];
+  const { data: tableSales, error: tableError } = await supabase
+    .from("sales")
+    .select(
+      "id, day_id, alley_id, item_id, artist_id, quantity, unit_retail_price, unit_production_cost",
+    )
+    .eq("day_id", day.id)
+    .order("id", { ascending: false });
+  const { data: fnSales, error: fnError } = await supabase.rpc("day_sales", {
+    p_alley_id: day.alley_id,
+    p_day_id: day.id,
+  });
+  const salesError = tableError ?? fnError;
+
+  const listed = new Map<number, TableSale>();
+  for (const sale of (tableSales ?? []) as TableSale[]) {
+    listed.set(sale.id, sale);
+  }
+  const itemIds = [...listed.values()].map((sale) => sale.item_id);
+  const artistIds = [...listed.values()].map((sale) => sale.artist_id);
   const { data: soldItems } = itemIds.length
     ? await supabase.from("items").select("id, name, size").in("id", itemIds)
     : { data: [] };
+  const { data: soldArtists } = artistIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", artistIds)
+    : { data: [] };
   const itemById = new Map((soldItems ?? []).map((item) => [item.id, item]));
+  const soldArtistName = new Map(
+    (soldArtists ?? []).map((artist) => [artist.id, artist.display_name]),
+  );
 
-  const saleRows = (sales ?? []).map((sale) => {
+  const saleRows = [...listed.values()].map((sale) => {
     const item = itemById.get(sale.item_id);
     const profit =
-      sale.quantity *
+      Number(sale.quantity) *
       (Number(sale.unit_retail_price) - Number(sale.unit_production_cost));
+    const size = item?.size ? ` (${item.size})` : "";
     return {
       id: sale.id,
-      name: item
-        ? `${item.name}${item.size ? ` (${item.size})` : ""}`
-        : "Item",
-      artist: artistName.get(sale.artist_id) ?? "",
+      name: item ? `${item.name}${size}` : `Item ${sale.item_id}`,
+      artist: soldArtistName.get(sale.artist_id) ?? "",
       quantity: sale.quantity,
       retail: String(sale.unit_retail_price),
       profit: profit.toFixed(2),
     };
   });
+  for (const sale of (fnSales ?? []) as DaySale[]) {
+    if (saleRows.some((row) => row.id === sale.id)) continue;
+    const profit =
+      Number(sale.quantity) *
+      (Number(sale.unit_retail_price) - Number(sale.unit_production_cost));
+    const size = sale.size ? ` (${sale.size})` : "";
+    saleRows.push({
+      id: sale.id,
+      name: sale.item_name ? `${sale.item_name}${size}` : "Item",
+      artist: sale.artist_name ?? "",
+      quantity: sale.quantity,
+      retail: String(sale.unit_retail_price),
+      profit: profit.toFixed(2),
+    });
+  }
   const dayProfit = saleRows.reduce(
     (sum, sale) => sum + Number(sale.profit),
     0,
@@ -121,9 +169,6 @@ export default async function SellPage({
             {day.label}
             {isOpen ? "" : " · closed"}
           </h1>
-          <p className="text-sm text-neutral-500">
-            Alley {day.alley_id} · Day {day.id}
-          </p>
         </div>
         {isOpen ? (
           <form action={endDay}>
