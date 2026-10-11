@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Artist Alley Stock
 
-## Getting Started
+Track stock, sales, and profit for shared artist-alley booths. Artists sign in, keep their own prints, stickers, and handmade pieces, and record sales on an open convention day. Profit subtracts production cost and each artist’s share of the booth fee, then subtracts the cost of restocks that have not sold yet.
 
-First, run the development server:
+## Setup
+
+```bash
+npm install
+cp .env.example .env.local   # or create .env.local yourself
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Sign-in uses email and password through Supabase Auth.
+
+`.env.local`:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+The live database already has the tables this app expects. `src/lib/supabase/schema.sql` is a from-scratch copy for a new project. Do not run it against the existing database. Incremental SQL lives in `supabase/`. If the dashboard says restocks are not set up, run `supabase/restocks.sql` in the Supabase SQL editor.
+
+New auth users get a `profiles` row as an artist. Promote someone to admin by setting `profiles.role` to `admin`.
+
+## Using it
+
+- **Stock** lists items you can see, with filters for name, type, and size. Admins can also filter by artist.
+- **Add item** creates a stock row: print (A3, A4, or A5), sticker, or handmade, with quantity, production cost, and retail price. The same name can exist once per artist, type, and size.
+- **Alleys** are conventions. Each alley has a tabling fee, the artists who tabled, and one or more days. Only one day per alley can be open.
+- **Sell** records a sale on the open day. Quantity on hand goes down, and the sale stores the prices and artist at that moment.
+- **Profit** on the home page is your margin from alleys you joined, minus your share of each booth fee (`fee / number of artists`), minus the production cost of unsold restocks.
+
+## Scripts
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run start
+npm run lint
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
