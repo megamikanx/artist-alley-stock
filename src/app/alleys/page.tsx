@@ -8,18 +8,20 @@ export default async function AlleysPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user?.id ?? "")
-    .maybeSingle();
-  const { data: alleys, error } = await supabase
-    .from("alleys")
-    .select("id, name, starts_on, ends_on, tabling_fee")
-    .order("starts_on", { ascending: false });
-  const { data: memberships } = await supabase
-    .from("alley_artists")
-    .select("alley_id");
+  const [{ data: profile }, { data: alleys, error }, { data: memberships }, personal] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user?.id ?? "")
+        .maybeSingle(),
+      supabase
+        .from("alleys")
+        .select("id, name, starts_on, ends_on, tabling_fee")
+        .order("starts_on", { ascending: false }),
+      supabase.from("alley_artists").select("alley_id"),
+      user ? loadPersonalProfit(supabase, user.id) : Promise.resolve(null),
+    ]);
   const artistsByAlley = new Map<number, number>();
   for (const membership of memberships ?? []) {
     artistsByAlley.set(
@@ -28,7 +30,6 @@ export default async function AlleysPage() {
     );
   }
   const isAdmin = profile?.role === "admin";
-  const personal = user ? await loadPersonalProfit(supabase, user.id) : null;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16">

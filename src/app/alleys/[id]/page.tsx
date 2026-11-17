@@ -19,41 +19,50 @@ export default async function AlleyPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user?.id ?? "")
-    .maybeSingle();
-  const { data: alley } = await supabase
-    .from("alleys")
-    .select("id, name, starts_on, ends_on, tabling_fee, notes")
-    .eq("id", Number(id))
-    .maybeSingle();
+  const [{ data: profile }, { data: alley }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user?.id ?? "")
+      .maybeSingle(),
+    supabase
+      .from("alleys")
+      .select("id, name, starts_on, ends_on, tabling_fee, notes")
+      .eq("id", Number(id))
+      .maybeSingle(),
+  ]);
 
   if (!alley) notFound();
 
-  const { data: members } = await supabase
-    .from("alley_artists")
-    .select("artist_id, profiles(display_name)")
-    .eq("alley_id", alley.id);
-  const { data: artists } = await supabase
-    .from("profiles")
-    .select("id, display_name, role")
-    .order("display_name");
-  const { data: profit } = await supabase
-    .from("alley_profits")
-    .select("days_profit")
-    .eq("alley_id", alley.id)
-    .maybeSingle();
-  const { data: days } = await supabase
-    .from("days")
-    .select("id, label, status")
-    .eq("alley_id", alley.id)
-    .order("id");
-  const { data: dayProfits } = await supabase
-    .from("day_profits")
-    .select("day_id, profit")
-    .eq("alley_id", alley.id);
+  const [
+    { data: members },
+    { data: artists },
+    { data: profit },
+    { data: days },
+    { data: dayProfits },
+    personal,
+  ] = await Promise.all([
+    supabase
+      .from("alley_artists")
+      .select("artist_id, profiles(display_name)")
+      .eq("alley_id", alley.id),
+    supabase.from("profiles").select("id, display_name, role").order("display_name"),
+    supabase
+      .from("alley_profits")
+      .select("days_profit")
+      .eq("alley_id", alley.id)
+      .maybeSingle(),
+    supabase
+      .from("days")
+      .select("id, label, status")
+      .eq("alley_id", alley.id)
+      .order("id"),
+    supabase
+      .from("day_profits")
+      .select("day_id, profit")
+      .eq("alley_id", alley.id),
+    user ? loadPersonalProfit(supabase, user.id) : Promise.resolve(null),
+  ]);
 
   const profitByDay = new Map(
     (dayProfits ?? []).map((row) => [row.day_id, row.profit]),
@@ -65,7 +74,6 @@ export default async function AlleyPage({
   const salesProfit = Number(profit?.days_profit ?? 0);
   const feeShare = splitFee(alley.tabling_fee, artistCount);
   const alleyProfit = isAdmin ? salesProfit - Number(alley.tabling_fee) : salesProfit - feeShare;
-  const personal = user ? await loadPersonalProfit(supabase, user.id) : null;
   const yours = personal?.byAlley.get(alley.id);
 
   const artistTotals = new Map<

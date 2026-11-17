@@ -51,21 +51,27 @@ export async function loadPersonalProfit(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<PersonalProfit> {
-  const { data: memberships } = await supabase
-    .from("alley_artists")
-    .select("alley_id, artist_id");
-  const { data: sales } = await supabase
-    .from("sales")
-    .select("quantity, unit_retail_price, unit_production_cost, days!inner(alley_id)")
-    .eq("artist_id", userId);
-  const { data: items } = await supabase
-    .from("items")
-    .select("id, quantity")
-    .eq("artist_id", userId);
-  const { data: restocks, error: restockError } = await supabase
-    .from("restocks")
-    .select("item_id, quantity, unit_cost, restocked_at")
-    .eq("artist_id", userId);
+  const [
+    { data: memberships },
+    { data: sales },
+    { data: items },
+    { data: restocks, error: restockError },
+    { data: alleys },
+  ] = await Promise.all([
+    supabase.from("alley_artists").select("alley_id, artist_id"),
+    supabase
+      .from("sales")
+      .select(
+        "quantity, unit_retail_price, unit_production_cost, days!inner(alley_id)",
+      )
+      .eq("artist_id", userId),
+    supabase.from("items").select("id, quantity").eq("artist_id", userId),
+    supabase
+      .from("restocks")
+      .select("item_id, quantity, unit_cost, restocked_at")
+      .eq("artist_id", userId),
+    supabase.from("alleys").select("id, tabling_fee"),
+  ]);
 
   const counts = new Map<number, number>();
   const mine = new Set<number>();
@@ -84,7 +90,6 @@ export async function loadPersonalProfit(
     marginByAlley.set(alleyId, (marginByAlley.get(alleyId) ?? 0) + margin);
   }
 
-  const { data: alleys } = await supabase.from("alleys").select("id, tabling_fee");
   const byAlley = new Map<number, AlleyProfit>();
   for (const alley of alleys ?? []) {
     const participating = mine.has(alley.id);

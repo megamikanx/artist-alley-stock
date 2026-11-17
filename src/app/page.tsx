@@ -42,15 +42,6 @@ export default async function HomePage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("display_name, role")
-    .eq("id", user?.id ?? "")
-    .maybeSingle();
-  const { data: artists } = await supabase
-    .from("profiles")
-    .select("id, display_name")
-    .order("display_name");
 
   let itemQuery = supabase
     .from("items")
@@ -63,11 +54,18 @@ export default async function HomePage({
   if (artist) itemQuery = itemQuery.eq("artist_id", artist);
   if (q) itemQuery = itemQuery.ilike("name", `%${q}%`);
 
-  const { data: items, error } = await itemQuery;
+  const [{ data: profile, error: profileError }, { data: artists }, { data: items, error }, profit] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("display_name, role")
+        .eq("id", user?.id ?? "")
+        .maybeSingle(),
+      supabase.from("profiles").select("id, display_name").order("display_name"),
+      itemQuery,
+      user ? loadPersonalProfit(supabase, user.id) : Promise.resolve(null),
+    ]);
   const isAdmin = profile?.role === "admin";
-  const profit = user
-    ? await loadPersonalProfit(supabase, user.id)
-    : null;
   const showArtistFilter = isAdmin;
 
   return (

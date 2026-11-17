@@ -59,12 +59,10 @@ export default async function SellPage({
   if (!day) notFound();
 
   const alley = first(day.alleys as EmbeddedAlley | EmbeddedAlley[] | null);
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const { data: adminFlag } = await supabase.rpc("is_admin");
+  const [{ data: profile }, { data: adminFlag }] = await Promise.all([
+    supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(),
+    supabase.rpc("is_admin"),
+  ]);
   const isAdmin = adminFlag === true || profile?.role === "admin";
   let stockQuery = supabase
     .from("items")
@@ -73,7 +71,24 @@ export default async function SellPage({
     )
     .order("name");
   if (!isAdmin) stockQuery = stockQuery.eq("artist_id", user.id);
-  const { data: stock, error: stockError } = await stockQuery;
+  const [
+    { data: stock, error: stockError },
+    { data: tableSales, error: tableError },
+    { data: fnSales, error: fnError },
+  ] = await Promise.all([
+    stockQuery,
+    supabase
+      .from("sales")
+      .select(
+        "id, day_id, alley_id, item_id, artist_id, quantity, unit_retail_price, unit_production_cost",
+      )
+      .eq("day_id", day.id)
+      .order("id", { ascending: false }),
+    supabase.rpc("day_sales", {
+      p_alley_id: day.alley_id,
+      p_day_id: day.id,
+    }),
+  ]);
   const stockArtistIds = [
     ...new Set((stock ?? []).map((item) => item.artist_id)),
   ];
@@ -86,17 +101,6 @@ export default async function SellPage({
   const artistName = new Map(
     (artists ?? []).map((artist) => [artist.id, artist.display_name]),
   );
-  const { data: tableSales, error: tableError } = await supabase
-    .from("sales")
-    .select(
-      "id, day_id, alley_id, item_id, artist_id, quantity, unit_retail_price, unit_production_cost",
-    )
-    .eq("day_id", day.id)
-    .order("id", { ascending: false });
-  const { data: fnSales, error: fnError } = await supabase.rpc("day_sales", {
-    p_alley_id: day.alley_id,
-    p_day_id: day.id,
-  });
   const salesError = tableError ?? fnError;
 
   const listed = new Map<number, TableSale>();
@@ -105,15 +109,14 @@ export default async function SellPage({
   }
   const itemIds = [...listed.values()].map((sale) => sale.item_id);
   const artistIds = [...listed.values()].map((sale) => sale.artist_id);
-  const { data: soldItems } = itemIds.length
-    ? await supabase.from("items").select("id, name, size").in("id", itemIds)
-    : { data: [] };
-  const { data: soldArtists } = artistIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, display_name")
-        .in("id", artistIds)
-    : { data: [] };
+  const [{ data: soldItems }, { data: soldArtists }] = await Promise.all([
+    itemIds.length
+      ? supabase.from("items").select("id, name, size").in("id", itemIds)
+      : Promise.resolve({ data: [] as { id: number; name: string; size: string | null }[] }),
+    artistIds.length
+      ? supabase.from("profiles").select("id, display_name").in("id", artistIds)
+      : Promise.resolve({ data: [] as { id: string; display_name: string }[] }),
+  ]);
   const itemById = new Map((soldItems ?? []).map((item) => [item.id, item]));
   const soldArtistName = new Map(
     (soldArtists ?? []).map((artist) => [artist.id, artist.display_name]),
